@@ -7,6 +7,7 @@ primary_region = "syd"
 
 [env]
   PORT = "8080"
+  EASYRECEIPT_HASH_STORE_PATH = "/data/hash_entries.jsonl"
 
 [http_service]
   internal_port = 8080
@@ -20,3 +21,7 @@ primary_region = "syd"
   cpu_kind = "shared"
   cpus = 1
   memory = "256mb"
+
+[[mounts]]
+  source = "data"
+  destination = "/data"

@@ -7,8 +7,10 @@
 //! API without binding a TCP port.
 
 mod http;
+mod store;
 
 pub use http::create_router;
+pub use store::EntryStore;
 
 use sha2::{Digest, Sha256};
 

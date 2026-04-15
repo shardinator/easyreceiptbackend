@@ -17,6 +17,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /app/target/release/easyreceiptbackend /usr/local/bin/easyreceiptbackend
+RUN mkdir -p /data && chown -R nobody:nogroup /data
 ENV PORT=8080
 EXPOSE 8080
 USER nobody
