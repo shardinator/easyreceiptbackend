@@ -1,2 +1,5 @@
+target
+.git
+.env
+*.md
 fly.toml
-.git/
