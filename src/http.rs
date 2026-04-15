@@ -2,8 +2,9 @@
 
 use crate::{EntryStore, Sha256Hash};
 use axum::{
-    routing::{get, post},
-    extract::State,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
@@ -68,6 +69,17 @@ async fn entries_handler(State(store): State<Arc<EntryStore>>) -> Json<Vec<Entry
     Json(rows)
 }
 
+async fn delete_entry_handler(
+    State(store): State<Arc<EntryStore>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    match store.delete_by_id(&id) {
+        Ok(true) => Ok(StatusCode::NO_CONTENT),
+        Ok(false) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
 /// Full Axum router (JSON API + permissive CORS for browser clients).
 pub fn create_router() -> Router {
     let path = std::env::var("EASYRECEIPT_HASH_STORE_PATH")
@@ -86,6 +98,7 @@ pub fn create_router() -> Router {
         .route("/", get(|| async { "OK" }))
         .route("/api/hash", post(hash_handler))
         .route("/api/entries", get(entries_handler))
+        .route("/api/entries/{id}", delete(delete_entry_handler))
         .with_state(store)
         .layer(CorsLayer::permissive())
 }

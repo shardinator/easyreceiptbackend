@@ -72,6 +72,57 @@ impl EntryStore {
     pub fn read_all(&self) -> io::Result<Vec<EntryRecord>> {
         read_all_records(&self.path)
     }
+
+    /// Removes the line whose `id` matches. Rewrites the JSONL file. Returns `Ok(true)` if a row was removed.
+    pub fn delete_by_id(&self, id: &str) -> io::Result<bool> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .expect("entry store mutex poisoned");
+
+        let mut records = read_all_records(&self.path)?;
+        let before = records.len();
+        records.retain(|r| r.id != id);
+        if records.len() == before {
+            return Ok(false);
+        }
+        rewrite_records(&self.path, &records)?;
+        let next = records
+            .iter()
+            .map(|r| r.count)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1);
+        self.next_count.store(next, Ordering::SeqCst);
+        Ok(true)
+    }
+}
+
+fn rewrite_records(path: &Path, records: &[EntryRecord]) -> io::Result<()> {
+    let tmp = temp_path(path);
+    {
+        let mut f = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&tmp)?;
+        for r in records {
+            let line = format_entry_line(&r.id, r.count, r.timestamp_ms, &r.text, &r.hash);
+            f.write_all(line.as_bytes())?;
+            f.write_all(b"\n")?;
+        }
+        f.flush()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+fn temp_path(path: &Path) -> PathBuf {
+    let mut p = path.to_path_buf();
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    p.set_file_name(name);
+    p
 }
 
 fn now_unix_ms() -> u128 {
@@ -287,6 +338,34 @@ mod tests {
         assert_eq!(rows[1].count, 2);
         assert_eq!(rows[1].text, "two");
         assert_eq!(rows[1].hash, "h2");
+    }
+
+    #[test]
+    fn delete_by_id_removes_line_and_updates_next_count() {
+        let mut p = std::env::temp_dir();
+        let unique = format!(
+            "easyreceipt_store_test_del_{}_{}.jsonl",
+            std::process::id(),
+            super::now_unix_ms()
+        );
+        p.push(unique);
+
+        let _ = fs::remove_file(&p);
+        let store = EntryStore::new(&p).expect("store init");
+        let a = store.append("one", "h1").expect("append 1");
+        let b = store.append("two", "h2").expect("append 2");
+
+        assert!(store.delete_by_id(&a.id).expect("delete first"));
+        let rows = store.read_all().expect("read after delete");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, b.id);
+
+        assert!(!store.delete_by_id(&a.id).expect("delete missing"));
+        store.append("three", "h3").expect("append after delete");
+        let rows = store.read_all().expect("read all");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1].count, 3);
+        assert_eq!(rows[1].text, "three");
     }
 }
 

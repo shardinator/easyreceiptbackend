@@ -61,3 +61,55 @@ async fn post_hash_empty_string() {
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     );
 }
+
+#[tokio::test]
+async fn delete_entry_unknown_returns_404() {
+    let app = easyreceiptbackend::create_router();
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/entries/does-not-exist-xxxxxxxx")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn post_hash_then_delete_entry_returns_204() {
+    let app = easyreceiptbackend::create_router();
+    let unique = format!("delete-test-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/hash")
+                .header("content-type", "application/json")
+                .body(Body::from(format!(r#"{{"text":"{}"}}"#, unique)))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = res.into_body().collect().await.unwrap().to_bytes();
+    let id = extract_json_string_field(&body, "id").expect("saved id");
+
+    let res = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/api/entries/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+}
