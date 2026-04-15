@@ -70,6 +70,10 @@ pub struct EntryRecord {
 
 impl EntryStore {
     pub fn read_all(&self) -> io::Result<Vec<EntryRecord>> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .expect("entry store mutex poisoned");
         read_all_records(&self.path)
     }
 
@@ -112,8 +116,21 @@ fn rewrite_records(path: &Path, records: &[EntryRecord]) -> io::Result<()> {
             f.write_all(b"\n")?;
         }
         f.flush()?;
+        f.sync_all()?;
     }
-    std::fs::rename(&tmp, path)?;
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        // Some environments reject atomic replace; fall back to unlink + rename.
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+        std::fs::rename(&tmp, path).map_err(|e2| {
+            let _ = std::fs::remove_file(&tmp);
+            io::Error::new(
+                e2.kind(),
+                format!("rewrite store: rename failed ({e}); retry failed ({e2})"),
+            )
+        })?;
+    }
     Ok(())
 }
 

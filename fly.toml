@@ -1,4 +1,15 @@
 # fly.toml — https://fly.io/docs/reference/configuration/
+#
+# This API stores rows in a JSONL file on a Fly Volume (/data). Each Machine has
+# its own volume — they are not shared. If more than one Machine runs this app,
+# the proxy load-balances across them: GET /api/entries and DELETE /api/entries/{id}
+# can hit different disks, so deletes look broken (404) or rows "reappear" after refresh.
+#
+# Keep exactly one Machine for the default `app` group, e.g.:
+#   fly scale count 1
+# On fresh deploys prefer a single Machine:
+#   fly deploy --ha=false
+#
 app = "easyreceiptbackend"
 primary_region = "syd"
 
